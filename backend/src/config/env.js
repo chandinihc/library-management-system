@@ -1,19 +1,19 @@
 const dotenv = require("dotenv");
+const path = require("node:path");
 const { z } = require("zod");
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const schema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   CLIENT_URL: z.string().url().default("http://localhost:5173"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRES_IN: z.string().default("8h"),
-  DB_HOST: z.string().min(1),
-  DB_PORT: z.coerce.number().int().positive().default(3306),
-  DB_USER: z.string().min(1),
-  DB_PASSWORD: z.string().default(""),
-  DB_NAME: z.string().min(1).default("library_management"),
-  DB_CONNECTION_LIMIT: z.coerce.number().int().positive().default(10),
+  DATABASE_URL: z.string().url(),
+  DATABASE_SSL: z.enum(["true", "false"]).default("true"),
+  DATABASE_SSL_CA_PATH: z.string().default(""),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_ANON_KEY: z.string().optional(),
   FINE_PER_DAY: z.coerce.number().nonnegative().default(2),
   MAX_BORROWED_BOOKS: z.coerce.number().int().positive().default(5),
   RESERVATION_EXPIRY_DAYS: z.coerce.number().int().positive().default(2),

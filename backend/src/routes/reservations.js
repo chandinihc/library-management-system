@@ -38,7 +38,7 @@ router.post("/", authorize("student"), asyncHandler(async (req, res) => {
     await connection.beginTransaction();
     const [books] = await connection.execute(
       `SELECT b.id, b.title,
-       GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > UTC_TIMESTAMP()), 0) AS available_copies
+       GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > CURRENT_TIMESTAMP), 0) AS available_copies
        FROM books b WHERE b.id = ? FOR UPDATE`,
       [bookId]
     );
@@ -50,7 +50,7 @@ router.post("/", authorize("student"), asyncHandler(async (req, res) => {
     );
     if (existing[0]) throw new AppError("You already have an active reservation for this book.", 409);
     const [result] = await connection.execute(
-      "INSERT INTO reservations (reservation_code, book_id, student_id) VALUES (?, ?, ?)",
+      "INSERT INTO reservations (reservation_code, book_id, student_id) VALUES (?, ?, ?) RETURNING id",
       [makeId("RES"), bookId, students[0].id]
     );
     await connection.commit();
@@ -83,7 +83,7 @@ router.delete("/:id", asyncHandler(async (req, res) => {
     await connection.execute("UPDATE reservations SET status = 'cancelled' WHERE id = ?", [reservation.id]);
     if (reservation.status === "ready") {
       const [[readyCount]] = await connection.execute(
-        "SELECT COUNT(*) AS count FROM reservations WHERE book_id = ? AND status = 'ready' AND expires_at > UTC_TIMESTAMP()",
+        "SELECT COUNT(*) AS count FROM reservations WHERE book_id = ? AND status = 'ready' AND expires_at > CURRENT_TIMESTAMP",
         [referenceRows[0].book_id]
       );
       if (Number(bookRows[0].available_copies) > Number(readyCount.count)) {
@@ -94,7 +94,7 @@ router.delete("/:id", asyncHandler(async (req, res) => {
         );
         if (waiting[0]) {
           await connection.execute(
-            "UPDATE reservations SET status = 'ready', expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? DAY), notified_at = UTC_TIMESTAMP() WHERE id = ?",
+            "UPDATE reservations SET status = 'ready', expires_at = CURRENT_TIMESTAMP + make_interval(days => ?), notified_at = CURRENT_TIMESTAMP WHERE id = ?",
             [env.RESERVATION_EXPIRY_DAYS, waiting[0].id]
           );
           await createNotification(connection, waiting[0].user_id, "reservation",

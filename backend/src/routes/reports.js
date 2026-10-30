@@ -30,13 +30,13 @@ router.get("/", asyncHandler(async (req, res) => {
             b.title AS book_title, s.student_code, u.full_name AS student_name
      FROM book_issues i JOIN books b ON b.id = i.book_id
      JOIN students s ON s.id = i.student_id JOIN users u ON u.id = s.user_id
-     WHERE (? IS NULL OR DATE(i.issued_at) >= ?) AND (? IS NULL OR DATE(i.issued_at) <= ?)
+     WHERE (CAST(? AS date) IS NULL OR DATE(i.issued_at) >= ?) AND (CAST(? AS date) IS NULL OR DATE(i.issued_at) <= ?)
      ORDER BY i.issued_at DESC LIMIT 1000`,
     [start, start, end, end]
   );
   const [overdue] = await pool.execute(
     `SELECT i.issue_code, i.due_at, b.title AS book_title, s.student_code, u.full_name AS student_name,
-            GREATEST(DATEDIFF(CURRENT_DATE, i.due_at), 0) AS days_overdue
+            GREATEST(CURRENT_DATE - i.due_at, 0) AS days_overdue
      FROM book_issues i JOIN books b ON b.id = i.book_id
      JOIN students s ON s.id = i.student_id JOIN users u ON u.id = s.user_id
      WHERE i.status IN ('issued','overdue') AND i.due_at < CURRENT_DATE
@@ -47,7 +47,7 @@ router.get("/", asyncHandler(async (req, res) => {
      FROM payments p JOIN fines f ON f.id = p.fine_id
      JOIN students s ON s.id = f.student_id JOIN users u ON u.id = s.user_id
      JOIN book_issues i ON i.id = f.issue_id JOIN books b ON b.id = i.book_id
-     WHERE (? IS NULL OR DATE(p.paid_at) >= ?) AND (? IS NULL OR DATE(p.paid_at) <= ?)
+     WHERE (CAST(? AS date) IS NULL OR DATE(p.paid_at) >= ?) AND (CAST(? AS date) IS NULL OR DATE(p.paid_at) <= ?)
      ORDER BY p.paid_at DESC LIMIT 1000`,
     [start, start, end, end]
   );
@@ -57,7 +57,7 @@ router.get("/", asyncHandler(async (req, res) => {
             COUNT(DISTINCT i.id) AS loans
      FROM categories c LEFT JOIN books b ON b.category_id = c.id
      LEFT JOIN book_issues i ON i.book_id = b.id
-       AND (? IS NULL OR DATE(i.issued_at) >= ?) AND (? IS NULL OR DATE(i.issued_at) <= ?)
+       AND (CAST(? AS date) IS NULL OR DATE(i.issued_at) >= ?) AND (CAST(? AS date) IS NULL OR DATE(i.issued_at) <= ?)
      GROUP BY c.id ORDER BY c.name`,
     [start, start, end, end]
   );
@@ -77,7 +77,7 @@ router.get("/students/:id/history", asyncHandler(async (req, res) => {
             COALESCE(f.amount,0) AS fine, COALESCE(f.paid_amount,0) AS paid
      FROM book_issues i JOIN books b ON b.id = i.book_id
      LEFT JOIN fines f ON f.issue_id = i.id
-     WHERE i.student_id = ? AND (? IS NULL OR DATE(i.issued_at) >= ?) AND (? IS NULL OR DATE(i.issued_at) <= ?)
+     WHERE i.student_id = ? AND (CAST(? AS date) IS NULL OR DATE(i.issued_at) >= ?) AND (CAST(? AS date) IS NULL OR DATE(i.issued_at) <= ?)
      ORDER BY i.issued_at DESC`,
     [req.params.id, start, start, end, end]
   );

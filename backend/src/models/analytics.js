@@ -3,16 +3,16 @@ async function getMonthlyCirculation(executor, months) {
   const [rows] = await executor.execute(
     `SELECT month, SUM(issues) AS issues, SUM(returns_count) AS returns_count
      FROM (
-       SELECT DATE_FORMAT(issued_at, '%Y-%m') AS month, COUNT(*) AS issues, 0 AS returns_count
+       SELECT to_char(issued_at, 'YYYY-MM') AS month, COUNT(*) AS issues, 0 AS returns_count
        FROM book_issues
-       WHERE issued_at >= DATE_SUB(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL ? MONTH)
-       GROUP BY DATE_FORMAT(issued_at, '%Y-%m')
+       WHERE issued_at >= date_trunc('month', CURRENT_DATE) - make_interval(months => ?)
+       GROUP BY to_char(issued_at, 'YYYY-MM')
        UNION ALL
-       SELECT DATE_FORMAT(returned_at, '%Y-%m') AS month, 0 AS issues, COUNT(*) AS returns_count
+       SELECT to_char(returned_at, 'YYYY-MM') AS month, 0 AS issues, COUNT(*) AS returns_count
        FROM book_issues
        WHERE returned_at IS NOT NULL
-         AND returned_at >= DATE_SUB(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL ? MONTH)
-       GROUP BY DATE_FORMAT(returned_at, '%Y-%m')
+         AND returned_at >= date_trunc('month', CURRENT_DATE) - make_interval(months => ?)
+       GROUP BY to_char(returned_at, 'YYYY-MM')
      ) activity
      GROUP BY month ORDER BY month`,
     [interval, interval]

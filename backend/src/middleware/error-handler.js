@@ -5,14 +5,17 @@ function notFound(req, _res, next) {
 }
 
 function errorHandler(error, _req, res, _next) {
-  if (error.code === "ER_DUP_ENTRY") {
+  if (error.code === "23505") {
     return res.status(409).json({ message: "A record with those details already exists." });
   }
-  if (error.code === "ER_NO_REFERENCED_ROW_2") {
+  if (error.code === "23503" && error.detail?.includes("still referenced")) {
+    return res.status(409).json({ message: "This record is still in use and cannot be deleted." });
+  }
+  if (error.code === "23503") {
     return res.status(400).json({ message: "One of the selected related records does not exist." });
   }
-  if (error.code === "ER_ROW_IS_REFERENCED_2") {
-    return res.status(409).json({ message: "This record is still in use and cannot be deleted." });
+  if (error.code === "23514") {
+    return res.status(400).json({ message: "The submitted values do not satisfy a database constraint." });
   }
   if (error.name === "MulterError") {
     return res.status(400).json({ message: error.message });

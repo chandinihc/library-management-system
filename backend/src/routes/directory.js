@@ -19,7 +19,7 @@ router.get("/categories", asyncHandler(async (_req, res) => {
 
 router.post("/categories", staff, asyncHandler(async (req, res) => {
   if (typeof req.body.name !== "string" || !req.body.name.trim()) throw new AppError("Category name is required.", 400);
-  const [result] = await pool.execute("INSERT INTO categories (name, description) VALUES (?, ?)", [
+  const [result] = await pool.execute("INSERT INTO categories (name, description) VALUES (?, ?) RETURNING id", [
     req.body.name.trim(), req.body.description || null
   ]);
   res.status(201).json({ id: result.insertId, message: "Category created." });
@@ -44,10 +44,10 @@ router.get("/authors", asyncHandler(async (req, res) => {
   const term = req.query.search ? `%${String(req.query.search).trim()}%` : null;
   const [rows] = await pool.execute(
     `SELECT a.id, a.name, a.bio, COUNT(DISTINCT ba.book_id) AS book_count,
-            GROUP_CONCAT(DISTINCT b.title ORDER BY b.title SEPARATOR ', ') AS books
+            string_agg(DISTINCT b.title, ', ' ORDER BY b.title) AS books
      FROM authors a LEFT JOIN book_authors ba ON ba.author_id = a.id
      LEFT JOIN books b ON b.id = ba.book_id
-     WHERE ? IS NULL OR a.name LIKE ?
+     WHERE CAST(? AS text) IS NULL OR a.name ILIKE ?
      GROUP BY a.id ORDER BY a.name`,
     [term, term]
   );
@@ -56,7 +56,7 @@ router.get("/authors", asyncHandler(async (req, res) => {
 
 router.post("/authors", staff, asyncHandler(async (req, res) => {
   if (typeof req.body.name !== "string" || !req.body.name.trim()) throw new AppError("Author name is required.", 400);
-  const [result] = await pool.execute("INSERT INTO authors (name, bio) VALUES (?, ?)", [
+  const [result] = await pool.execute("INSERT INTO authors (name, bio) VALUES (?, ?) RETURNING id", [
     req.body.name.trim(), req.body.bio || null
   ]);
   res.status(201).json({ id: result.insertId, message: "Author created." });

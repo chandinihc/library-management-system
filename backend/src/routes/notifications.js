@@ -16,13 +16,13 @@ router.get("/", asyncHandler(async (req, res) => {
 }));
 
 router.patch("/read-all", asyncHandler(async (req, res) => {
-  await pool.execute("UPDATE notifications SET read_at = UTC_TIMESTAMP() WHERE user_id = ? AND read_at IS NULL", [req.user.id]);
+  await pool.execute("UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = ? AND read_at IS NULL", [req.user.id]);
   res.json({ message: "Notifications marked as read." });
 }));
 
 router.patch("/:id/read", asyncHandler(async (req, res) => {
   const [result] = await pool.execute(
-    "UPDATE notifications SET read_at = COALESCE(read_at, UTC_TIMESTAMP()) WHERE id = ? AND user_id = ?",
+    "UPDATE notifications SET read_at = COALESCE(read_at, CURRENT_TIMESTAMP) WHERE id = ? AND user_id = ?",
     [req.params.id, req.user.id]
   );
   if (!result.affectedRows) throw new AppError("Notification not found.", 404);

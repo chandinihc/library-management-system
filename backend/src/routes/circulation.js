@@ -29,7 +29,7 @@ router.get("/issues", asyncHandler(async (req, res) => {
             CASE WHEN i.status = 'issued' AND i.due_at < CURRENT_DATE THEN 'overdue' ELSE i.status END AS status,
             b.id AS book_id, b.title AS book_title, b.book_code, b.cover_image,
             s.id AS student_id, s.student_code, u.full_name AS student_name,
-            COALESCE(f.amount, GREATEST(DATEDIFF(CURRENT_DATE, i.due_at), 0) * ?) AS fine_amount,
+            COALESCE(f.amount, GREATEST(CURRENT_DATE - i.due_at, 0) * ?) AS fine_amount,
             COALESCE(f.paid_amount, 0) AS paid_amount
      FROM book_issues i JOIN books b ON b.id = i.book_id
      JOIN students s ON s.id = i.student_id JOIN users u ON u.id = s.user_id
@@ -73,7 +73,7 @@ router.post("/issues", staff, asyncHandler(async (req, res) => {
     }
     const [reservationRows] = await connection.execute(
       `SELECT id, student_id FROM reservations
-       WHERE book_id = ? AND (status = 'pending' OR (status = 'ready' AND expires_at > UTC_TIMESTAMP()))
+       WHERE book_id = ? AND (status = 'pending' OR (status = 'ready' AND expires_at > CURRENT_TIMESTAMP))
        ORDER BY CASE status WHEN 'ready' THEN 0 ELSE 1 END, queued_at
        LIMIT 1 FOR UPDATE`,
       [bookId]
@@ -82,7 +82,7 @@ router.post("/issues", staff, asyncHandler(async (req, res) => {
       throw new AppError("This copy is reserved for the next student in the queue.", 409);
     }
     const [issue] = await connection.execute(
-      "INSERT INTO book_issues (issue_code, book_id, student_id, issued_by, due_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO book_issues (issue_code, book_id, student_id, issued_by, due_at) VALUES (?, ?, ?, ?, ?) RETURNING id",
       [makeId("ISS"), bookId, studentId, req.user.id, dueAt]
     );
     await connection.execute("UPDATE books SET available_copies = available_copies - 1 WHERE id = ?", [bookId]);
@@ -115,24 +115,24 @@ router.post("/issues/:id/return", staff, asyncHandler(async (req, res) => {
     if (!issue) throw new AppError("Loan record not found.", 404);
     if (!["issued", "overdue"].includes(issue.status)) throw new AppError("This book has already been returned.", 409);
     await connection.execute(
-      "UPDATE book_issues SET status = 'returned', returned_at = UTC_TIMESTAMP() WHERE id = ?",
+      "UPDATE book_issues SET status = 'returned', returned_at = CURRENT_TIMESTAMP WHERE id = ?",
       [issue.id]
     );
     await connection.execute("UPDATE books SET available_copies = available_copies + 1 WHERE id = ?", [issue.book_id]);
     const [fineRows] = await connection.execute(
-      "SELECT GREATEST(DATEDIFF(CURRENT_DATE, ?), 0) * ? AS amount",
+      "SELECT GREATEST(CURRENT_DATE - ?, 0) * ? AS amount",
       [issue.due_at, env.FINE_PER_DAY]
     );
     const fineAmount = Number(fineRows[0].amount);
     if (fineAmount > 0) {
       await connection.execute(
         `INSERT INTO fines (issue_id, student_id, amount, status) VALUES (?, ?, ?, 'pending')
-         ON DUPLICATE KEY UPDATE amount = GREATEST(amount, VALUES(amount))`,
+         ON CONFLICT (issue_id) DO UPDATE SET amount = GREATEST(fines.amount, EXCLUDED.amount)`,
         [issue.id, issue.student_id, fineAmount]
       );
     }
     const [readyRows] = await connection.execute(
-      "SELECT COUNT(*) AS count FROM reservations WHERE book_id = ? AND status = 'ready' AND expires_at > UTC_TIMESTAMP()",
+      "SELECT COUNT(*) AS count FROM reservations WHERE book_id = ? AND status = 'ready' AND expires_at > CURRENT_TIMESTAMP",
       [issue.book_id]
     );
     const [availableRows] = await connection.execute("SELECT available_copies FROM books WHERE id = ?", [issue.book_id]);
@@ -146,7 +146,7 @@ router.post("/issues/:id/return", staff, asyncHandler(async (req, res) => {
     if (reservationRows[0]) {
       const expiryDays = env.RESERVATION_EXPIRY_DAYS;
       await connection.execute(
-        "UPDATE reservations SET status = 'ready', expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? DAY), notified_at = UTC_TIMESTAMP() WHERE id = ?",
+        "UPDATE reservations SET status = 'ready', expires_at = CURRENT_TIMESTAMP + make_interval(days => ?), notified_at = CURRENT_TIMESTAMP WHERE id = ?",
         [expiryDays, reservationRows[0].id]
       );
       await createNotification(connection, reservationRows[0].user_id, "reservation",

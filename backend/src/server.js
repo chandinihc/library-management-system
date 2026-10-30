@@ -13,6 +13,11 @@ async function start() {
 }
 
 start().catch((error) => {
-  console.error("Unable to start the API. Check the MySQL connection and environment settings.", error);
+  console.error("Unable to connect to Supabase PostgreSQL. Verify the backend/.env DATABASE_URL, pooler region/credentials, network access, and TLS settings.", {
+    message: error.message,
+    code: error.code,
+    address: error.address,
+    port: error.port
+  });
   process.exit(1);
 });

@@ -63,12 +63,12 @@ router.post("/register", asyncHandler(async (req, res) => {
     await connection.beginTransaction();
     const passwordHash = await bcrypt.hash(password, 12);
     const [userResult] = await connection.execute(
-      "INSERT INTO users (email, password_hash, role, full_name, phone) VALUES (?, ?, 'student', ?, ?)",
+      "INSERT INTO users (email, password_hash, role, full_name, phone) VALUES (?, ?, 'student', ?, ?) RETURNING id",
       [email.trim().toLowerCase(), passwordHash, fullName.trim(), phone?.trim() || null]
     );
     const studentCode = makeId("STU");
     await connection.execute(
-      "INSERT INTO students (user_id, student_code, department, course, year_of_study) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO students (user_id, student_code, department, course, year_of_study) VALUES (?, ?, ?, ?, ?) RETURNING id",
       [userResult.insertId, studentCode, department.trim(), course.trim(), yearOfStudy || null]
     );
     await connection.commit();
@@ -128,7 +128,7 @@ router.post("/forgot-password", resetLimiter, asyncHandler(async (req, res) => {
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   await pool.execute(
-    "INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE))",
+    "INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, CURRENT_TIMESTAMP + INTERVAL '30 minutes')",
     [rows[0].id, tokenHash]
   );
   if (env.SMTP_HOST && env.SMTP_USER) {
@@ -162,13 +162,13 @@ router.post("/reset-password", asyncHandler(async (req, res) => {
   try {
     await connection.beginTransaction();
     const [rows] = await connection.execute(
-      "SELECT id, user_id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > UTC_TIMESTAMP() LIMIT 1 FOR UPDATE",
+      "SELECT id, user_id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP LIMIT 1 FOR UPDATE",
       [tokenHash]
     );
     if (!rows[0]) throw new AppError("This reset link is invalid or has expired.", 400);
     const passwordHash = await bcrypt.hash(password, 12);
     await connection.execute("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, rows[0].user_id]);
-    await connection.execute("UPDATE password_resets SET used_at = UTC_TIMESTAMP() WHERE user_id = ? AND used_at IS NULL", [rows[0].user_id]);
+    await connection.execute("UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL", [rows[0].user_id]);
     await connection.commit();
     res.json({ message: "Password reset successfully. Please sign in." });
   } catch (error) {

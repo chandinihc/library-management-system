@@ -123,24 +123,24 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
   const params = [];
   if (req.query.search) {
     const term = `%${String(req.query.search).trim()}%`;
-    conditions.push("(b.title LIKE ? OR b.isbn LIKE ? OR b.publisher LIKE ? OR EXISTS (SELECT 1 FROM book_authors ba JOIN authors a ON a.id = ba.author_id WHERE ba.book_id = b.id AND a.name LIKE ?))");
+    conditions.push("(b.title ILIKE ? OR b.isbn ILIKE ? OR b.publisher ILIKE ? OR EXISTS (SELECT 1 FROM book_authors ba JOIN authors a ON a.id = ba.author_id WHERE ba.book_id = b.id AND a.name ILIKE ?))");
     params.push(term, term, term, term);
   }
   if (req.query.category_id) {
     conditions.push("b.category_id = ?");
     params.push(Number(req.query.category_id));
   }
-  if (req.query.availability === "available") conditions.push("GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > UTC_TIMESTAMP()), 0) > 0");
-  if (req.query.availability === "unavailable") conditions.push("GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > UTC_TIMESTAMP()), 0) = 0");
+  if (req.query.availability === "available") conditions.push("GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > CURRENT_TIMESTAMP), 0) > 0");
+  if (req.query.availability === "unavailable") conditions.push("GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > CURRENT_TIMESTAMP), 0) = 0");
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const [countRows] = await pool.execute(`SELECT COUNT(*) AS total FROM books b ${where}`, params);
   const [rows] = await pool.execute(
     `SELECT b.id, b.book_code, b.isbn, b.title, b.category_id, c.name AS category,
             b.publisher, b.publication_year, b.edition, b.description, b.cover_image,
             b.total_copies,
-            GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > UTC_TIMESTAMP()), 0) AS available_copies,
+            GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > CURRENT_TIMESTAMP), 0) AS available_copies,
             b.created_at,
-            GROUP_CONCAT(DISTINCT a.name ORDER BY a.name SEPARATOR ', ') AS authors
+            string_agg(DISTINCT a.name, ', ' ORDER BY a.name) AS authors
      FROM books b
      LEFT JOIN categories c ON c.id = b.category_id
      LEFT JOIN book_authors ba ON ba.book_id = b.id
@@ -157,7 +157,7 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
 router.get("/:id", authenticate, asyncHandler(async (req, res) => {
   const [rows] = await pool.execute(
     `SELECT b.*, c.name AS category,
-            GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > UTC_TIMESTAMP()), 0) AS free_copies
+            GREATEST(b.available_copies - (SELECT COUNT(*) FROM reservations r WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > CURRENT_TIMESTAMP), 0) AS free_copies
      FROM books b
      LEFT JOIN categories c ON c.id = b.category_id WHERE b.id = ?`,
     [req.params.id]
@@ -182,7 +182,7 @@ router.post("/", authenticate, authorize("admin", "librarian"), upload.single("c
     const [result] = await connection.execute(
       `INSERT INTO books (book_code, isbn, title, category_id, publisher, publication_year,
        edition, description, cover_image, total_copies, available_copies)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [makeId("BK"), book.isbn, book.title, book.categoryId, book.publisher, book.publicationYear,
         book.edition, book.description, book.coverImage, book.totalCopies, book.availableCopies]
     );

@@ -17,8 +17,8 @@ router.get("/", asyncHandler(async (req, res) => {
   const filters = [search, search, search, search, search, status, status];
   const [countRows] = await pool.execute(
     `SELECT COUNT(*) AS total FROM students s JOIN users u ON u.id = s.user_id
-     WHERE (? IS NULL OR u.full_name LIKE ? OR u.email LIKE ? OR s.student_code LIKE ? OR s.department LIKE ?)
-       AND (? IS NULL OR u.status = ?)`,
+     WHERE (CAST(? AS text) IS NULL OR u.full_name ILIKE ? OR u.email ILIKE ? OR s.student_code ILIKE ? OR s.department ILIKE ?)
+       AND (CAST(? AS text) IS NULL OR u.status = ?)`,
     filters
   );
   const [[summary]] = await pool.execute(
@@ -34,8 +34,8 @@ router.get("/", asyncHandler(async (req, res) => {
             (SELECT COALESCE(SUM(f.amount - f.paid_amount), 0) FROM fines f
              WHERE f.student_id = s.id AND f.status IN ('pending','partial')) AS outstanding_fines
      FROM students s JOIN users u ON u.id = s.user_id
-     WHERE (? IS NULL OR u.full_name LIKE ? OR u.email LIKE ? OR s.student_code LIKE ? OR s.department LIKE ?)
-       AND (? IS NULL OR u.status = ?)
+     WHERE (CAST(? AS text) IS NULL OR u.full_name ILIKE ? OR u.email ILIKE ? OR s.student_code ILIKE ? OR s.department ILIKE ?)
+       AND (CAST(? AS text) IS NULL OR u.status = ?)
      ORDER BY u.full_name`,
     [...filters, limit, (page - 1) * limit]
   );
@@ -56,11 +56,11 @@ router.post("/", asyncHandler(async (req, res) => {
     await connection.beginTransaction();
     const hash = await bcrypt.hash(password, 12);
     const [user] = await connection.execute(
-      "INSERT INTO users (email, password_hash, role, full_name, phone) VALUES (?, ?, 'student', ?, ?)",
+      "INSERT INTO users (email, password_hash, role, full_name, phone) VALUES (?, ?, 'student', ?, ?) RETURNING id",
       [email.trim().toLowerCase(), hash, fullName.trim(), phone || null]
     );
     const [student] = await connection.execute(
-      "INSERT INTO students (user_id, student_code, department, course, year_of_study, address) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO students (user_id, student_code, department, course, year_of_study, address) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
       [user.insertId, makeId("STU"), department.trim(), course.trim(), yearOfStudy || null, address || null]
     );
     await connection.commit();

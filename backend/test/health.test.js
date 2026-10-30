@@ -1,7 +1,5 @@
 process.env.JWT_SECRET = "test-secret-value-that-is-at-least-thirty-two-characters";
-process.env.DB_HOST = "127.0.0.1";
-process.env.DB_USER = "test";
-process.env.DB_NAME = "library_management";
+process.env.DATABASE_URL = "postgresql://test:test@127.0.0.1:5432/library_management";
 
 const test = require("node:test");
 const assert = require("node:assert/strict");

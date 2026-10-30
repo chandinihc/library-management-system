@@ -7,18 +7,18 @@ async function runMaintenance() {
   try {
     await connection.beginTransaction();
     const [expired] = await connection.execute(
-      "UPDATE reservations SET status = 'expired' WHERE status = 'ready' AND expires_at <= UTC_TIMESTAMP()"
+      "UPDATE reservations SET status = 'expired' WHERE status = 'ready' AND expires_at <= CURRENT_TIMESTAMP"
     );
     const [availableBooks] = await connection.execute(
       `SELECT b.id, b.title FROM books b
        WHERE b.available_copies > (
          SELECT COUNT(*) FROM reservations r
-         WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > UTC_TIMESTAMP()
+         WHERE r.book_id = b.id AND r.status = 'ready' AND r.expires_at > CURRENT_TIMESTAMP
        )`
     );
     for (const book of availableBooks) {
       const [[ready]] = await connection.execute(
-        "SELECT COUNT(*) AS count FROM reservations WHERE book_id = ? AND status = 'ready' AND expires_at > UTC_TIMESTAMP()",
+        "SELECT COUNT(*) AS count FROM reservations WHERE book_id = ? AND status = 'ready' AND expires_at > CURRENT_TIMESTAMP",
         [book.id]
       );
       let slots = Number(book.available_copies) - Number(ready.count);
@@ -30,7 +30,7 @@ async function runMaintenance() {
         );
         if (!waiting[0]) break;
         await connection.execute(
-          "UPDATE reservations SET status = 'ready', expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? DAY), notified_at = UTC_TIMESTAMP() WHERE id = ?",
+          "UPDATE reservations SET status = 'ready', expires_at = CURRENT_TIMESTAMP + make_interval(days => ?), notified_at = CURRENT_TIMESTAMP WHERE id = ?",
           [env.RESERVATION_EXPIRY_DAYS, waiting[0].id]
         );
         await createNotification(connection, waiting[0].user_id, "reservation",
@@ -41,7 +41,7 @@ async function runMaintenance() {
     const [newlyOverdue] = await connection.execute(
       `SELECT i.id, i.issue_code, i.due_at, b.title, s.user_id
        FROM book_issues i JOIN books b ON b.id = i.book_id JOIN students s ON s.id = i.student_id
-       WHERE i.status = 'issued' AND i.due_at < CURRENT_DATE FOR UPDATE`
+       WHERE i.status = 'issued' AND i.due_at < CURRENT_DATE FOR UPDATE OF i`
     );
     for (const issue of newlyOverdue) {
       await connection.execute("UPDATE book_issues SET status = 'overdue' WHERE id = ?", [issue.id]);
@@ -59,20 +59,20 @@ async function runMaintenance() {
     }
     await connection.execute(
       `INSERT INTO fines (issue_id, student_id, amount, status)
-       SELECT i.id, i.student_id, GREATEST(DATEDIFF(CURRENT_DATE, i.due_at), 0) * ?, 'pending'
+       SELECT i.id, i.student_id, GREATEST(CURRENT_DATE - i.due_at, 0) * ?, 'pending'
        FROM book_issues i WHERE i.status = 'overdue'
-       ON DUPLICATE KEY UPDATE amount = GREATEST(amount, VALUES(amount))`,
+       ON CONFLICT (issue_id) DO UPDATE SET amount = GREATEST(fines.amount, EXCLUDED.amount)`,
       [env.FINE_PER_DAY]
     );
     const [dueSoon] = await connection.execute(
       `SELECT i.issue_code, i.due_at, b.title, s.user_id
        FROM book_issues i JOIN books b ON b.id = i.book_id JOIN students s ON s.id = i.student_id
-       WHERE i.status = 'issued' AND i.due_at BETWEEN CURRENT_DATE AND DATE_ADD(CURRENT_DATE, INTERVAL 2 DAY)`
+       WHERE i.status = 'issued' AND i.due_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '2 days'`
     );
     for (const issue of dueSoon) {
       const message = `Loan ${issue.issue_code}: ${issue.title} is due on ${issue.due_at}.`;
       const [existing] = await connection.execute(
-        "SELECT id FROM notifications WHERE user_id = ? AND type = 'reminder' AND message = ? AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 3 DAY) LIMIT 1",
+        "SELECT id FROM notifications WHERE user_id = ? AND type = 'reminder' AND message = ? AND created_at >= CURRENT_TIMESTAMP - INTERVAL '3 days' LIMIT 1",
         [issue.user_id, message]
       );
       if (!existing[0]) {
