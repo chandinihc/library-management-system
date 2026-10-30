@@ -9,7 +9,7 @@ import {
   Tooltip, XAxis, YAxis
 } from "recharts";
 import api from "../services/api";
-import { PageHeader, Spinner } from "../components/Ui";
+import { LoadError, PageHeader, Spinner } from "../components/Ui";
 import { errorMessage, formatDate, money } from "../utils";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -121,14 +121,23 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const { notify } = useToast();
-  useEffect(() => {
-    api.get("/dashboard").then(({ data: result }) => setData(result))
-      .catch((error) => notify(errorMessage(error), "error"))
-      .finally(() => setLoading(false));
-  }, []);
+  async function loadDashboard() {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const { data: result } = await api.get("/dashboard");
+      setData(result);
+    } catch (error) {
+      const message = errorMessage(error);
+      setLoadError(message);
+      notify(message, "error");
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { loadDashboard(); }, []);
   if (loading) return <Spinner label="Loading your dashboard..." />;
-  if (!data) return <div className="error-panel">Your dashboard could not be loaded. Refresh to try again.</div>;
+  if (!data) return <LoadError message={loadError} onRetry={loadDashboard} />;
   if (data.role === "student") return <StudentDashboard data={{ ...data, name: user?.full_name?.split(" ")[0] }} />;
   return <AdminDashboard data={data} user={user} />;
 }

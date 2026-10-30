@@ -3,11 +3,21 @@ import { ArrowDownRight, ArrowUpRight, BookOpen, CalendarClock, Check, Clock3, P
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { EmptyState, Modal, PageHeader, SearchBox, Spinner } from "../components/Ui";
+import { EmptyState, LoadError, Modal, PageHeader, SearchBox, Spinner } from "../components/Ui";
 import { errorMessage, formatDate, money } from "../utils";
 
-const today = new Date();
-const defaultDue = new Date(today.getTime() + 14 * 86400000).toISOString().slice(0, 10);
+function dateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function defaultDueDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 14);
+  return dateInputValue(date);
+}
 
 export default function Circulation() {
   const { user } = useAuth();
@@ -19,16 +29,22 @@ export default function Circulation() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ book_id: "", student_id: "", due_at: defaultDue });
+  const [form, setForm] = useState({ book_id: "", student_id: "", due_at: defaultDueDate() });
   const [busy, setBusy] = useState(false);
 
   async function load() {
     setLoading(true);
+    setLoadError("");
     try {
       const { data } = await api.get("/issues", { params: { status: status || undefined } });
       setIssues(data);
-    } catch (error) { notify(errorMessage(error), "error"); } finally { setLoading(false); }
+    } catch (error) {
+      const message = errorMessage(error);
+      setLoadError(message);
+      notify(message, "error");
+    } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, [status]);
   useEffect(() => {
@@ -43,7 +59,7 @@ export default function Circulation() {
   }, [staff]);
 
   function openIssue() {
-    setForm({ book_id: "", student_id: "", due_at: defaultDue });
+    setForm({ book_id: "", student_id: "", due_at: defaultDueDate() });
     setModal({ mode: "issue" });
   }
   async function issueBook(event) {
@@ -75,10 +91,10 @@ export default function Circulation() {
 
   return <>
     <PageHeader eyebrow={staff ? "LENDING DESK" : "YOUR LIBRARY"} title={staff ? "Circulation" : "My loans"} description={staff ? "Check books in and out, and keep every loan on track." : "Your active loans, due dates, and full borrowing history."} actions={staff && <button className="button button-primary" onClick={openIssue}><Plus size={17} /> Check out a book</button>} />
-    <div className="mini-stat-row"><div className="mini-stat"><span className="mini-stat-icon violet"><BookOpen size={17} /></span><span><small>{staff ? "Active loans" : "Currently borrowed"}</small><b>{checkedOut}</b></span></div><div className="mini-stat"><span className={`mini-stat-icon ${overdue ? "rose" : "mint"}`}><CalendarClock size={17} /></span><span><small>Overdue books</small><b>{overdue}</b></span></div><div className="mini-stat"><span className="mini-stat-icon amber"><Clock3 size={17} /></span><span><small>Transactions shown</small><b>{issues.length}</b></span></div></div>
+    {!loadError && <div className="mini-stat-row"><div className="mini-stat"><span className="mini-stat-icon violet"><BookOpen size={17} /></span><span><small>{staff ? "Active loans shown" : "Currently borrowed"}</small><b>{checkedOut}</b></span></div><div className="mini-stat"><span className={`mini-stat-icon ${overdue ? "rose" : "mint"}`}><CalendarClock size={17} /></span><span><small>Overdue shown</small><b>{overdue}</b></span></div><div className="mini-stat"><span className="mini-stat-icon amber"><Clock3 size={17} /></span><span><small>Transactions shown</small><b>{issues.length}</b></span></div></div>}
     <section className="panel data-panel">
       <div className="data-toolbar"><SearchBox value={search} onChange={setSearch} placeholder="Search title, student or loan ID..." /><select className="toolbar-select" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All loan statuses</option><option value="issued">On loan</option><option value="overdue">Overdue</option><option value="returned">Returned</option></select><span className="result-count">{filtered.length} transactions</span></div>
-      {loading ? <Spinner label="Loading loan history..." /> : filtered.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>BOOK</th>{staff && <th>STUDENT</th>}<th>CHECKED OUT</th><th>DUE DATE</th><th>RETURNED</th><th>STATUS</th>{staff && <th>FINE</th>}<th /></tr></thead><tbody>{filtered.map((issue) => <tr key={issue.id}>
+      {loading ? <Spinner label="Loading loan history..." /> : loadError ? <LoadError message={loadError} onRetry={() => load()} /> : filtered.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>BOOK</th>{staff && <th>STUDENT</th>}<th>CHECKED OUT</th><th>DUE DATE</th><th>RETURNED</th><th>STATUS</th>{staff && <th>FINE</th>}<th /></tr></thead><tbody>{filtered.map((issue) => <tr key={issue.id}>
         <td><div className="table-book"><span className="table-book-icon"><BookOpen size={17} /></span><span><b>{issue.book_title}</b><small>{issue.book_code} · {issue.issue_code}</small></span></div></td>
         {staff && <td><b className="table-primary">{issue.student_name}</b><small>{issue.student_code}</small></td>}
         <td>{formatDate(issue.issued_at)}</td><td className={issue.status === "overdue" ? "text-danger" : ""}>{formatDate(issue.due_at)}</td><td>{formatDate(issue.returned_at)}</td>

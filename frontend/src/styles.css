@@ -353,6 +353,12 @@ tbody tr:last-child td { border-bottom: 0; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .error-panel { padding: 18px; color: var(--red); background: var(--red-light); border-radius: 10px; }
+.load-error-state { display: flex; align-items: center; gap: 11px; padding: 14px; margin: 12px 0; color: var(--red); background: var(--red-light); border: 1px solid color-mix(in srgb, var(--red) 24%, transparent); border-radius: 10px; }
+.load-error-icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; background: var(--surface); border-radius: 10px; }
+.load-error-state > div { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.load-error-state strong { color: var(--text-strong); font-size: 11px; }
+.load-error-state span { color: var(--muted-strong); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.load-error-state .button { flex: 0 0 auto; }
 
 .collection-panel { padding: 0 17px 2px; }
 .collection-toolbar { flex-wrap: wrap; }
@@ -650,6 +656,10 @@ textarea.text-input { resize: vertical; line-height: 1.5; }
   .donut-chart { flex-basis: 130px; width: 130px; height: 130px; }
 }
 @media (max-width: 900px) {
+  .auth-page { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+  .auth-aside, .auth-main { min-width: 0; }
+  .auth-aside { padding-inline: 24px; }
+  .auth-main { padding-inline: 24px; }
   .sidebar { width: 235px; transform: translateX(-100%); }
   .sidebar-collapsed { width: 235px; }
   .mobile-nav-open .sidebar { transform: translateX(0); }
@@ -735,6 +745,8 @@ textarea.text-input { resize: vertical; line-height: 1.5; }
   .reservation-alert { align-items: flex-start; flex-wrap: wrap; }
   .reservation-alert > a { margin-left: 28px; }
   .report-filter { padding: 11px; }
+  .load-error-state { align-items: flex-start; flex-wrap: wrap; }
+  .load-error-state .button { margin-left: 45px; }
   .report-date-fields { align-items: flex-end; }
   .report-date-fields label { flex: 1; min-width: 112px; }
   .report-date-fields .text-input { width: 100%; }

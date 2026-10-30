@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { PageHeader, Spinner } from "../components/Ui";
+import { LoadError, PageHeader, Spinner } from "../components/Ui";
 import { errorMessage } from "../utils";
 
 export default function Profile() {
@@ -12,13 +12,24 @@ export default function Profile() {
   const { notify } = useToast();
   const [form, setForm] = useState({ full_name: "", phone: "", department: "", course: "", year_of_study: "", address: "" });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    api.get("/auth/me").then(({ data }) => setForm({
-      full_name: data.full_name || "", phone: data.phone || "", department: data.department || "",
-      course: data.course || "", year_of_study: data.year_of_study || "", address: data.address || ""
-    })).catch((error) => notify(errorMessage(error), "error")).finally(() => setLoading(false));
-  }, []);
+  async function loadProfile() {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const { data } = await api.get("/auth/me");
+      setForm({
+        full_name: data.full_name || "", phone: data.phone || "", department: data.department || "",
+        course: data.course || "", year_of_study: data.year_of_study || "", address: data.address || ""
+      });
+    } catch (error) {
+      const message = errorMessage(error);
+      setLoadError(message);
+      notify(message, "error");
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { loadProfile(); }, []);
   async function submit(event) {
     event.preventDefault();
     setSaving(true);
@@ -30,6 +41,7 @@ export default function Profile() {
   }
   const initials = (user?.full_name || "U").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
   if (loading) return <Spinner label="Loading your profile..." />;
+  if (loadError) return <><PageHeader eyebrow="ACCOUNT SETTINGS" title="My profile" description="Keep your library account details up to date." /><LoadError message={loadError} onRetry={loadProfile} /></>;
   return <>
     <PageHeader eyebrow="ACCOUNT SETTINGS" title="My profile" description="Keep your library account details up to date." />
     <div className="profile-layout">

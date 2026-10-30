@@ -3,7 +3,7 @@ import { ArrowDownUp, ArrowRight, BookOpen, Edit3, Eye, Plus, Search, Trash2, Us
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { EmptyState, Modal, PageHeader, SearchBox, Spinner } from "../components/Ui";
+import { EmptyState, LoadError, Modal, PageHeader, SearchBox, Spinner } from "../components/Ui";
 import { downloadCsv, errorMessage, formatDate, money } from "../utils";
 
 const blank = { full_name: "", email: "", phone: "", password: "", department: "", course: "", year_of_study: "", address: "" };
@@ -18,6 +18,7 @@ export default function Students() {
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState({ active_students: 0, departments: 0, outstanding_fines: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(blank);
   const [history, setHistory] = useState([]);
@@ -27,12 +28,17 @@ export default function Students() {
   const pageSize = 10;
   async function load(currentPage = page) {
     setLoading(true);
+    setLoadError("");
     try {
       const { data } = await api.get("/students", { params: { page: currentPage, limit: pageSize, search: search || undefined, status: status || undefined } });
       setStudents(data.items);
       setTotal(data.total);
       setSummary(data.summary);
-    } catch (error) { notify(errorMessage(error), "error"); } finally { setLoading(false); }
+    } catch (error) {
+      const message = errorMessage(error);
+      setLoadError(message);
+      notify(message, "error");
+    } finally { setLoading(false); }
   }
   useEffect(() => {
     setPage(1);
@@ -79,10 +85,10 @@ export default function Students() {
       <button className="button button-secondary" onClick={() => downloadCsv("library-students.csv", students.map(({ student_code, full_name, email, phone, department, course, active_loans, outstanding_fines, status }) => ({ student_code, full_name, email, phone, department, course, active_loans, outstanding_fines, status })))}><ArrowDownUp size={16} /> Export page</button>
       <button className="button button-primary" onClick={() => openForm(null)}><Plus size={17} /> Add student</button>
     </>} />
-    <div className="mini-stat-row"><div className="mini-stat"><span className="mini-stat-icon violet"><UserRound size={17} /></span><span><small>Active members</small><b>{summary.active_students}</b></span></div><div className="mini-stat"><span className="mini-stat-icon mint"><BookOpen size={17} /></span><span><small>Departments</small><b>{summary.departments}</b></span></div><div className="mini-stat"><span className="mini-stat-icon rose"><span className="currency-small">₹</span></span><span><small>Outstanding fines</small><b>{money(summary.outstanding_fines)}</b></span></div></div>
+    {!loadError && <div className="mini-stat-row"><div className="mini-stat"><span className="mini-stat-icon violet"><UserRound size={17} /></span><span><small>Active members</small><b>{summary.active_students}</b></span></div><div className="mini-stat"><span className="mini-stat-icon mint"><BookOpen size={17} /></span><span><small>Departments</small><b>{summary.departments}</b></span></div><div className="mini-stat"><span className="mini-stat-icon rose"><span className="currency-small">₹</span></span><span><small>Outstanding fines</small><b>{money(summary.outstanding_fines)}</b></span></div></div>}
     <section className="panel data-panel">
       <div className="data-toolbar"><SearchBox value={search} onChange={setSearch} placeholder="Search name, ID, email or department..." /><select className="toolbar-select" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All account statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select><span className="result-count">{students.length} students</span></div>
-      {loading ? <Spinner label="Loading student directory..." /> : students.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>STUDENT</th><th>STUDENT ID</th><th>DEPARTMENT / COURSE</th><th>BOOKS OUT</th><th>OUTSTANDING</th><th>STATUS</th><th /></tr></thead><tbody>{students.map((student, index) => <tr key={student.id}>
+      {loading ? <Spinner label="Loading student directory..." /> : loadError ? <LoadError message={loadError} onRetry={() => load()} /> : students.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>STUDENT</th><th>STUDENT ID</th><th>DEPARTMENT / COURSE</th><th>BOOKS OUT</th><th>OUTSTANDING</th><th>STATUS</th><th /></tr></thead><tbody>{students.map((student, index) => <tr key={student.id}>
         <td><div className="table-person"><span className={`avatar table-avatar avatar-color-${index % 5}`}>{student.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span><span><b>{student.full_name}</b><small>{student.email}</small></span></div></td>
         <td><span className="code-label">{student.student_code}</span></td>
         <td><b className="table-primary">{student.department}</b><small>{student.course}{student.year_of_study ? ` · Year ${student.year_of_study}` : ""}</small></td>
@@ -91,7 +97,7 @@ export default function Students() {
         <td><span className={`status-pill status-${student.status}`}>{student.status}</span></td>
         <td><div className="row-actions"><button className="icon-button" title="Borrowing history" onClick={() => showHistory(student)}><Eye size={16} /></button><button className="icon-button" title="Edit student" onClick={() => openForm(student)}><Edit3 size={15} /></button>{canDeactivate && student.status === "active" && <button className="icon-button danger-hover" title="Deactivate student" onClick={() => setPendingDelete(student)}><Trash2 size={15} /></button>}</div></td>
       </tr>)}</tbody></table></div> : <EmptyState title="No students found" text={search ? "Try another search term." : "Add a student to create the first member account."} />}
-      <div className="pagination-row"><span>Showing <b>{total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, total)}</b> of <b>{total}</b> students</span><div><button className="button button-secondary button-sm" disabled={page <= 1} onClick={() => { setPage(page - 1); load(page - 1); }}>Previous</button><button className="button button-secondary button-sm" disabled={page * pageSize >= total} onClick={() => { setPage(page + 1); load(page + 1); }}>Next <ArrowRight size={14} /></button></div></div>
+      {!loadError && <div className="pagination-row"><span>Showing <b>{total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, total)}</b> of <b>{total}</b> students</span><div><button className="button button-secondary button-sm" disabled={page <= 1} onClick={() => { setPage(page - 1); load(page - 1); }}>Previous</button><button className="button button-secondary button-sm" disabled={page * pageSize >= total} onClick={() => { setPage(page + 1); load(page + 1); }}>Next <ArrowRight size={14} /></button></div></div>}
     </section>
     {modal?.mode === "create" || modal?.mode === "edit" ? <Modal title={modal.mode === "create" ? "Add a student" : "Edit student"} subtitle="Student account and academic details." onClose={() => setModal(null)} wide>
       <form className="modal-form" onSubmit={submit}><div className="form-grid">

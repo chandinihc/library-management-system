@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, BookOpen, LibraryBig, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
@@ -29,6 +29,7 @@ export function LoginPage() {
   const { login } = useAuth();
   const { notify } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: "", password: "" });
   const [busy, setBusy] = useState(false);
   async function submit(event) {
@@ -36,7 +37,7 @@ export function LoginPage() {
     setBusy(true);
     try {
       await login(form);
-      navigate("/dashboard", { replace: true });
+      navigate(location.state?.from?.pathname || "/dashboard", { replace: true });
     } catch (error) {
       notify(errorMessage(error), "error");
     } finally { setBusy(false); }

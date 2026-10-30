@@ -2,20 +2,27 @@ import { useEffect, useState } from "react";
 import { ArrowDownToLine, BarChart3, BookOpen, CalendarRange, CircleDollarSign, RefreshCw, Users } from "lucide-react";
 import api from "../services/api";
 import { useToast } from "../context/ToastContext";
-import { EmptyState, PageHeader, Spinner } from "../components/Ui";
+import { EmptyState, LoadError, PageHeader, Spinner } from "../components/Ui";
 import { downloadCsv, errorMessage, formatDate, money } from "../utils";
 
 export default function Reports() {
   const { notify } = useToast();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [range, setRange] = useState({ start_date: "", end_date: "" });
   async function load(nextRange = range) {
     setLoading(true);
+    setLoadError("");
+    setData(null);
     try {
       const { data: result } = await api.get("/reports", { params: { start_date: nextRange.start_date || undefined, end_date: nextRange.end_date || undefined } });
       setData(result);
-    } catch (error) { notify(errorMessage(error), "error"); } finally { setLoading(false); }
+    } catch (error) {
+      const message = errorMessage(error);
+      setLoadError(message);
+      notify(message, "error");
+    } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
   function exportRows() {
@@ -38,7 +45,8 @@ export default function Reports() {
   return <>
     <PageHeader eyebrow="INSIGHTS & EXPORTS" title="Reports & analytics" description="Explore circulation, collection health, and fine activity with a custom date range." actions={<button className="button button-secondary" onClick={exportRows} disabled={!data}><ArrowDownToLine size={16} /> Export report CSV</button>} />
     <section className="panel report-filter"><div className="report-filter-copy"><span className="mini-stat-icon violet"><CalendarRange size={17} /></span><div><b>Filter report period</b><small>Use issue date and payment date to narrow the results.</small></div></div><div className="report-date-fields"><label>From<input className="text-input" type="date" value={range.start_date} onChange={(e) => setRange({ ...range, start_date: e.target.value })} /></label><label>To<input className="text-input" type="date" value={range.end_date} onChange={(e) => setRange({ ...range, end_date: e.target.value })} /></label><button className="button button-primary" onClick={() => load()} disabled={loading}><RefreshCw size={15} /> Apply</button><button className="button button-quiet" onClick={() => { const clean = { start_date: "", end_date: "" }; setRange(clean); load(clean); }}>Reset</button></div></section>
-    {loading ? <Spinner label="Building reports from library records..." /> : data ? <>
+    {loading ? <Spinner label="Building reports from library records..." /> : loadError && !data ? <LoadError message={loadError} onRetry={() => load()} /> : data ? <>
+      {loadError && <LoadError message={loadError} onRetry={() => load()} />}
       <div className="report-summary-grid"><div className="report-summary-card"><span className="report-summary-icon violet"><BookOpen size={18} /></span><small>Titles in collection</small><strong>{Number(data.inventory.titles).toLocaleString()}</strong><span>{Number(data.inventory.total_copies).toLocaleString()} total copies</span></div><div className="report-summary-card"><span className="report-summary-icon mint"><BarChart3 size={18} /></span><small>Copies available</small><strong>{Number(data.inventory.available_copies).toLocaleString()}</strong><span>{Number(data.inventory.total_copies) - Number(data.inventory.available_copies)} currently issued</span></div><div className="report-summary-card"><span className="report-summary-icon amber"><Users size={18} /></span><small>Transactions in range</small><strong>{data.borrowed.length.toLocaleString()}</strong><span>{range.start_date || range.end_date ? "Filtered period" : "All recorded issues"}</span></div><div className="report-summary-card"><span className="report-summary-icon rose"><CircleDollarSign size={18} /></span><small>Payments in range</small><strong>{money(data.fines.reduce((sum, item) => sum + Number(item.amount), 0))}</strong><span>{data.fines.length} payments recorded</span></div></div>
       <div className="report-grid">
         <section className="panel data-panel report-section"><div className="panel-head"><div><h2>Borrowing history</h2><p>Issues in the selected date range</p></div><span className="result-count">{data.borrowed.length} rows</span></div>{data.borrowed.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>BOOK</th><th>STUDENT</th><th>ISSUED</th><th>DUE</th><th>STATUS</th></tr></thead><tbody>{data.borrowed.slice(0, 100).map((item) => <tr key={item.issue_code}><td><b>{item.book_title}</b><small>{item.issue_code}</small></td><td><b className="table-primary">{item.student_name}</b><small>{item.student_code}</small></td><td>{formatDate(item.issued_at)}</td><td>{formatDate(item.due_at)}</td><td><span className={`status-pill status-${item.status}`}>{item.status}</span></td></tr>)}</tbody></table></div> : <EmptyState title="No borrowing records" text="There are no issues for this date range." />}</section>

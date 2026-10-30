@@ -4,7 +4,7 @@ import { ArrowDownUp, ArrowLeft, ArrowRight, BookOpen, Edit3, Eye, Filter, Plus,
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { EmptyState, Modal, PageHeader, SearchBox, Spinner } from "../components/Ui";
+import { EmptyState, LoadError, Modal, PageHeader, SearchBox, Spinner } from "../components/Ui";
 import { downloadCsv, errorMessage, formatDate } from "../utils";
 
 const blankForm = { title: "", isbn: "", category_id: "", publisher: "", publication_year: "", edition: "", description: "", total_copies: 1, author_ids: [] };
@@ -26,6 +26,7 @@ export default function Books() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(blankForm);
@@ -37,7 +38,7 @@ export default function Books() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setPage(1);
-      loadBooks(1).catch((error) => notify(errorMessage(error), "error"));
+      loadBooks(1);
     }, search ? 220 : 0);
     return () => window.clearTimeout(timer);
   }, [search, category, availability]);
@@ -53,15 +54,18 @@ export default function Books() {
 
   async function loadBooks(currentPage = page) {
     setLoading(true);
+    setLoadError("");
     try {
       const { data } = await api.get("/books", { params: { page: currentPage, limit, search: search || undefined, category_id: category || undefined, availability: availability || undefined } });
       setBooks(data.items);
       setTotal(Number(data.total));
+    } catch (error) {
+      const message = errorMessage(error);
+      setLoadError(message);
+      notify(message, "error");
     } finally { setLoading(false); }
   }
-  async function refresh() {
-    try { await loadBooks(); } catch (error) { notify(errorMessage(error), "error"); }
-  }
+  async function refresh() { await loadBooks(); }
   function openForm(book = null) {
     setCover(null);
     if (book) {
@@ -115,21 +119,30 @@ export default function Books() {
   const showingFrom = total ? (page - 1) * limit + 1 : 0;
   const showingTo = Math.min(page * limit, total);
   const availableCount = useMemo(() => books.filter((book) => Number(book.available_copies) > 0).length, [books]);
+  function updateSearch(value) {
+    setSearch(value);
+    setPage(1);
+    const params = new URLSearchParams(location.search);
+    if (value.trim()) params.set("search", value);
+    else params.delete("search");
+    const query = params.toString();
+    navigate(`/books${query ? `?${query}` : ""}`, { replace: true });
+  }
 
   return <>
     <PageHeader eyebrow="THE COLLECTION" title="Book collection" description="Explore, organize, and keep track of every title in your library." actions={<>
-      <button className="button button-secondary" onClick={() => downloadCsv("library-books.csv", books.map(({ book_code, title, authors: authorList, isbn, category: cat, available_copies, total_copies }) => ({ book_code, title, authors: authorList, isbn, category: cat, available_copies, total_copies })))}><ArrowDownUp size={16} /> Export page</button>
+      <button className="button button-secondary" disabled={!books.length || loading || Boolean(loadError)} onClick={() => downloadCsv("library-books.csv", books.map(({ book_code, title, authors: authorList, isbn, category: cat, available_copies, total_copies }) => ({ book_code, title, authors: authorList, isbn, category: cat, available_copies, total_copies })))}><ArrowDownUp size={16} /> Export page</button>
       {staff && <button className="button button-primary" onClick={() => openForm()}><Plus size={17} /> Add a book</button>}
     </>} />
 
     <section className="panel collection-panel">
       <div className="collection-toolbar">
-        <SearchBox value={search} onChange={(value) => { setSearch(value); if (value) navigate(`/books?search=${encodeURIComponent(value)}`, { replace: true }); }} placeholder="Search title, author or ISBN..." />
+        <SearchBox value={search} onChange={updateSearch} placeholder="Search title, author or ISBN..." />
         <div className="filter-control"><Filter size={16} /><select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{categories.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></div>
         <div className="filter-control"><BookOpen size={16} /><select value={availability} onChange={(event) => setAvailability(event.target.value)}><option value="">Any availability</option><option value="available">Available now</option><option value="unavailable">Currently checked out</option></select></div>
-        <div className="collection-summary"><span className="summary-green-dot" />{total.toLocaleString()} titles <span className="summary-divider">·</span>{availableCount} on this page available</div>
+        {!loadError && <div className="collection-summary"><span className="summary-green-dot" />{total.toLocaleString()} titles <span className="summary-divider">·</span>{availableCount} on this page available</div>}
       </div>
-      {loading ? <Spinner label="Loading the collection..." /> : books.length ? <>
+      {loading ? <Spinner label="Loading the collection..." /> : loadError ? <LoadError message={loadError} onRetry={() => loadBooks()} /> : books.length ? <>
         <div className="book-grid">{books.map((book) => <article className="book-card" key={book.id}>
           <div className="book-cover-area">
             {book.cover_image ? <img src={coverUrl(book.cover_image)} alt={`${book.title} cover`} className="book-cover-image" /> : <div className={`book-cover-placeholder cover-tone-${book.id % 5}`}><div className="cover-emblem"><BookOpen size={21} /></div><div className="cover-title">{book.title}</div><div className="cover-author">{book.authors || "Library edition"}</div><i /></div>}

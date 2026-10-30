@@ -48,6 +48,18 @@ export default function Layout() {
     setNotificationOpen(false);
   }, [location.pathname]);
   useEffect(() => {
+    function handleSearchShortcut(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        const searchInput = [...document.querySelectorAll(".global-search input, .search-box input")]
+          .find((input) => input.getClientRects().length > 0);
+        searchInput?.focus();
+      }
+    }
+    document.addEventListener("keydown", handleSearchShortcut);
+    return () => document.removeEventListener("keydown", handleSearchShortcut);
+  }, []);
+  useEffect(() => {
     let active = true;
     const load = () => api.get("/notifications").then(({ data }) => {
       if (active) {
